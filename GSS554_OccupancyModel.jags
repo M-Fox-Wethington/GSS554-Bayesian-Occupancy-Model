@@ -1,0 +1,30 @@
+
+  model {
+
+  #likelihood
+  
+  #Biological model for abundance
+  for (i in 1:N.patches) #move through all ice floes (sites)
+    {
+    
+    Occupancy[i] ~ dbern(psi[i]) #occupancy of ith ice floe (Occupancy = 1 if occupied) and probability depends on floe floe_ar
+    logit(psi[i]) <- b0.occ + betafloe_ar.occ * floe_ar.occ[i]  #probability of occupancy at site i
+    
+    Count[i] ~ dpois(lambda[i] * Occupancy[i] + 0.001) #seal density follows a poisson
+    log(lambda[i]) <- b0.lam + betafloe_ar.lam * floe_ar.lam[i] #abundance models as a function of floe size
+    
+ 
+    }
+  
+
+  #Count priors
+  b0.lam ~ dnorm(0, 0.01) 
+  betafloe_ar.lam ~ dnorm(0, 0.01)
+  
+  #Occupancy priors
+  b0.occ ~ dnorm(0, 0.01)  #occupancy prob when floe_ar is 0 (if floe_ar is standardized this is prob of occ with the average floe_ar)
+  betafloe_ar.occ ~ dnorm(0, 0.01) 
+  
+  #Ice floe_ar Since working on logit scale and we have standardized the predictors to have SD = 1, coeffs outside +- 5 are unlike 
+  
+    }

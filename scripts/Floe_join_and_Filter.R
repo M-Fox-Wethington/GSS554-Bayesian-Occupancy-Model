@@ -39,25 +39,43 @@ intersection_count <- intersection_count %>%
   select(FloeID, n)
 
 
-
-
 seals_joined <- st_join(intersection, intersection_count, by = "FloeID")
 
 seals_filtered <- seals_joined %>% 
   distinct(UID, .keep_all = TRUE)
 
-discrete_floes_filtered <- seals_joined %>% 
+occupied <- seals_joined %>% 
   distinct(FloeID.x, .keep_all = TRUE)
 
+occupied <- occupied %>% 
+  distinct(UID, .keep_all = TRUE)
 
-# seals_filtered <- seals_joined %>% 
-#   distinct(FloeID.x, .keep_all = TRUE)
+st_write(occupied, "occupied_floes_2021Nov24.shp" )
 
-st_write()
-  
-df <- subset (discrete_floes_filtered, select = -c(FPolyArea, FPolyScene))
+#REOPEN AND CORRECT FOR THE MISMATCHED COLUMNS/COLNAMES
+
+occupied <- st_read("G:/My Drive/academia/stonybrook/GSS554/final project/GSS554-Bayesian-Occupancy-Model/model_inputs/occupied_floes_2021Nov24.shp")
+absences <- st_read("G:/My Drive/academia/stonybrook/GSS554/final project/GSS554-Bayesian-Occupancy-Model/model_inputs/AbsentFloes_Sample5000.shp")
+
+#Take only count and floe area
+absences <- absences[,c(1,3)]
+
+#rename columns to match the "occupied" floes
+absences <- absences %>% 
+  rename(floe_ar = area,
+         Count = Join_Count)
+
+#Remame occupied floes to match absences df
+occupied <- occupied %>% 
+  rename(Count = n)
+
+#Reorder the columns so we can stack the dataframes
+occupied <- occupied %>% 
+  relocate(Count, .before = FloeID_x) %>% 
+  relocate(floe_ar, .before = FloeID_x)
 
 
-seals_joined <- c("Floe_UID", "Floe_Area", "Imagery_SceneID", "Seal_UID", "Seal_Area", )
+st_write(occupied, "occupied_floes_adjusted_2021Nov24.shp" )
+st_write(absences, "absences_floes_adjusted_2021Nov24.shp" )
 
 

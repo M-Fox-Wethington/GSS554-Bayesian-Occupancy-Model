@@ -8,16 +8,6 @@ output:
 ---
 
 
-library(sf)
-library(tidyverse)
-
-seals_sf <-st_read("G:/My Drive/academia/stonybrook/GSS554/final project/data/seals/Seals_WV03_20160225140324_10400100196BE200_2021Nov22_02.shp")
-st_transform(seals_sf, 3031)
-
-floes_sf <- st_read("G:/My Drive/academia/stonybrook/GSS554/final project/data/SeaIce/image_floes/floes.shp")
-st_transform(floes_sf, 3031)
-
-
 
 
 **Load Packages**
@@ -26,6 +16,7 @@ knitr::opts_chunk$set(echo = TRUE, tidy = TRUE, messages = FALSE)
 
 library(MCMCvis)
 library(R2jags)
+library(sf)
 library(abind)
 library(boot)
 library(tidyr)
@@ -43,13 +34,24 @@ library(ggExtra)
 
 jags.directory = "C:/Program Files/JAGS"
 
+#load occupied ice floes csv 
+absences_sf <-st_read("G:/My Drive/academia/stonybrook/GSS554/final project/GSS554-Bayesian-Occupancy-Model/model_inputs/absences_floes_adjusted_2021Nov24.shp")
+st_transform(absences_sf, 3031)
+
+occupied_sf <- st_read("G:/My Drive/academia/stonybrook/GSS554/final project/GSS554-Bayesian-Occupancy-Model/model_inputs/occupied_floes_adjusted_2021Nov24.shp")
+st_transform(occupied_sf, 3031)
+
+st_write(absences_sf, "absences_floes_adjusted_2021Nov24.csv", layer_options = "GEOMETRY=AS_XY")
+st_write(occupied_sf, "occupied_floes_adjusted_2021Nov24.csv", layer_options = "GEOMETRY=AS_XY")
+
+
 ```
 
 
 
 $$Abundance_i \backsim P(\lambda) \ \ (Response \ Distribution) \\
 log(\lambda_i) = n_i \ \ (link \ function) \\
-n_i = \beta_o + \beta_1Area_i \ \ (linear \ predictor) \\
+n_i = \beta_o + \beta_1floe_ar_i \ \ (linear \ predictor) \\
 \beta_0,\beta_1 \backsim N(0, 0.00001) \ \ (uninformative \ prior)$$ \\
 
 
@@ -59,21 +61,19 @@ n_i = \beta_o + \beta_1Area_i \ \ (linear \ predictor) \\
 #set seed
 set.seed(1011)
 
-#load csv 
-seals <- read.csv("C:/Users/Michael/Desktop/scratch/Seals.csv")
-
+seals <- read.csv("G:/My Drive/academia/stonybrook/GSS554/final project/GSS554-Bayesian-Occupancy-Model/model_inputs/occupied_absence_combined_2021Nov24.csv")
 
 #take only the first 4 columns of the dataset
-seals <- seals[,1:4] 
+# seals <- seals[,1:4] 
 
-#rename seal count on each ice floe
-names(seals)[names(seals)== "Join_Count"] <- "Count" 
+# #rename seal count on each ice floe
+# names(seals)[names(seals)== "Join_Count"] <- "Count" 
 
-#log the area
-seals$area <- log(seals$area)
+#log the floe_ar
+seals$floe_ar <- log(seals$floe_ar)
 
-#Standardize Area (mean = 0, sd = 1)
-seals$area <- (seals$area - mean(seals$area))/sd(seals$area)
+#Standardize floe_ar (mean = 0, sd = 1)
+seals$floe_ar <- (seals$floe_ar - mean(seals$floe_ar))/sd(seals$floe_ar)
 
 #Add a binary for presence absence of seals on each ice floe
 seals$presence <- as.integer(seals$Count > 0)
@@ -93,14 +93,14 @@ seals.subset <- rbind(occupied.floes, empty.floes.samples)
 #seals.subset.3000 <- sample_n(seals.subset, 3000)
 
 
+# 
+# real_count <- seals.subset$Count
+# seals_floe_ar <- seals$floe_ar
+# seals.stand.floe_ar <- (seals$floe_ar - mean(seals$floe_ar))/sd(seals$floe_ar)
 
-real_count <- seals.subset$Count
-seals_area <- seals$area
-seals.stand.area <- (seals$area - mean(seals$area))/sd(seals$area)
 
 
-
-JAGSfile <- "Model2_ZIP_ui.jags"
+JAGSfile <- "GSS554_OccupancyModel.jags"
 cat("
   model {
 
@@ -110,11 +110,11 @@ cat("
   for (i in 1:N.patches) #move through all ice floes (sites)
     {
     
-    Occupancy[i] ~ dbern(psi[i]) #occupancy of ith ice floe (Occupancy = 1 if occupied) and probability depends on floe area
-    logit(psi[i]) <- b0.occ + betaArea.occ * Area.occ[i]  #probability of occupancy at site i
+    Occupancy[i] ~ dbern(psi[i]) #occupancy of ith ice floe (Occupancy = 1 if occupied) and probability depends on floe floe_ar
+    logit(psi[i]) <- b0.occ + betafloe_ar.occ * floe_ar.occ[i]  #probability of occupancy at site i
     
     Count[i] ~ dpois(lambda[i] * Occupancy[i] + 0.001) #seal density follows a poisson
-    log(lambda[i]) <- b0.lam + betaArea.lam * Area.lam[i] #abundance models as a function of floe size
+    log(lambda[i]) <- b0.lam + betafloe_ar.lam * floe_ar.lam[i] #abundance models as a function of floe size
     
  
     }
@@ -122,13 +122,13 @@ cat("
 
   #Count priors
   b0.lam ~ dnorm(0, 0.01) 
-  betaArea.lam ~ dnorm(0, 0.01)
+  betafloe_ar.lam ~ dnorm(0, 0.01)
   
   #Occupancy priors
-  b0.occ ~ dnorm(0, 0.01)  #occupancy prob when area is 0 (if area is standardized this is prob of occ with the average area)
-  betaArea.occ ~ dnorm(0, 0.01) 
+  b0.occ ~ dnorm(0, 0.01)  #occupancy prob when floe_ar is 0 (if floe_ar is standardized this is prob of occ with the average floe_ar)
+  betafloe_ar.occ ~ dnorm(0, 0.01) 
   
-  #Ice Area Since working on logit scale and we have standardized the predictors to have SD = 1, coeffs outside +- 5 are unlike 
+  #Ice floe_ar Since working on logit scale and we have standardized the predictors to have SD = 1, coeffs outside +- 5 are unlike 
   
     }",fill = TRUE, file= JAGSfile)
 
@@ -139,20 +139,20 @@ Dat <- list(
   N.patches = nrow(seals.subset),
   Count = as.numeric(seals.subset$Count),
   Occupancy = ifelse(seals.subset$presence > 0, 1, NA),
-  Area.lam = as.numeric(seals.subset$area),
-  Area.occ = as.numeric(seals.subset$area))
+  floe_ar.lam = as.numeric(seals.subset$floe_ar),
+  floe_ar.occ = as.numeric(seals.subset$floe_ar))
 
 
 # # # Function for initial parameter values
-inits = list(list(b0.lam = rnorm(1, 0, .5),  betaArea.lam = rnorm(1, 0, .5),  b0.occ = rnorm(1, 0, .5),  betaArea.occ = rnorm(1, 0, .5)),
-             list(b0.lam = rnorm(1, 0, .5),  betaArea.lam = rnorm(1, 0, .5),  b0.occ = rnorm(1, 0, .5),  betaArea.occ = rnorm(1, 0, .5)),
-             list(b0.lam = rnorm(1, 0, .5),  betaArea.lam = rnorm(1, 0, .5),  b0.occ = rnorm(1, 0, .5),  betaArea.occ = rnorm(1, 0, .5)))
+inits = list(list(b0.lam = rnorm(1, 0, .5),  betafloe_ar.lam = rnorm(1, 0, .5),  b0.occ = rnorm(1, 0, .5),  betafloe_ar.occ = rnorm(1, 0, .5)),
+             list(b0.lam = rnorm(1, 0, .5),  betafloe_ar.lam = rnorm(1, 0, .5),  b0.occ = rnorm(1, 0, .5),  betafloe_ar.occ = rnorm(1, 0, .5)),
+             list(b0.lam = rnorm(1, 0, .5),  betafloe_ar.lam = rnorm(1, 0, .5),  b0.occ = rnorm(1, 0, .5),  betafloe_ar.occ = rnorm(1, 0, .5)))
 
 
 
 #Parameters we want to track
-ParsStage <- c("b0.lam","betaArea.lam", 
-               "b0.occ", "betaArea.occ", "lambda", "psi", "Area.lam" )
+ParsStage <- c("b0.lam","betafloe_ar.lam", 
+               "b0.occ", "betafloe_ar.occ", "lambda", "psi", "floe_ar.lam" )
 
 
 #Variables for MCMC
@@ -165,10 +165,10 @@ nc <- 3  # number of chains
 
 
 #JAGS model
-Mod2_ZIP_6400 = jags(
+GSS554_OccupancyModel = jags(
   inits = inits,
   n.chains=nc,
-  model.file="Model2_ZIP_ui.jags",
+  model.file="GSS554_OccupancyModel.jags",
   working.directory=getwd(),
   data=Dat,
   parameters.to.save=ParsStage,
@@ -187,8 +187,8 @@ Mod2_ZIP_6400 = jags(
 PR <- rnorm(20000, 0, 2)
 
 #plot the posteriors with priors
-MCMCtrace(Mod2_ZIP_6400,
-          params = c("b0.lam", "betaArea.lam", "b0.occ", "betaArea.occ" ),
+MCMCtrace(GSS554_OccupancyModel,
+          params = c("b0.lam", "betafloe_ar.lam", "b0.occ", "betafloe_ar.occ" ),
           ISB = FALSE,
           priors = PR,
           pdf = FALSE,
@@ -196,24 +196,24 @@ MCMCtrace(Mod2_ZIP_6400,
           n.eff = TRUE)
 
 #Summarize Count Intercept
-MCMCsummary(Mod2_ZIP_6400, 
-            params = 'Area.lam')
+MCMCsummary(GSS554_OccupancyModel, 
+            params = 'floe_ar.lam')
 
 #Summarize Occupancy Intercept 
-MCMCsummary(Mod2_ZIP_6400, 
+MCMCsummary(GSS554_OccupancyModel, 
             params = 'b0.occ')
 
 
 #Summarize Count Beta1
-MCMCsummary(Mod2_ZIP_6400, 
-            params = 'betaArea.lam')
+MCMCsummary(GSS554_OccupancyModel, 
+            params = 'betafloe_ar.lam')
 
 #Summarize Occupancy Beta1 
-MCMCsummary(Mod2_ZIP_6400, 
-            params = 'betaArea.occ')
+MCMCsummary(GSS554_OccupancyModel, 
+            params = 'betafloe_ar.occ')
 
 #Check posteriors for convergence
-MCMCtrace(Mod2_ZIP_6400, ISB = FALSE, pdf = FALSE, params = c("b0.lam", "betaArea.lam", "b0.occ", "betaArea.occ" ))
+MCMCtrace(GSS554_OccupancyModel, ISB = FALSE, pdf = FALSE, params = c("b0.lam", "betafloe_ar.lam", "b0.occ", "betafloe_ar.occ" ))
 
 
 
@@ -229,25 +229,25 @@ MCMCtrace(Mod2_ZIP_6400, ISB = FALSE, pdf = FALSE, params = c("b0.lam", "betaAre
 ```{r Plot without transformations }
 load("Model2_ZIP_6400_DifferentPriors1.RData")
 
-Mod2_ZIP_6400_df <- as.data.frame(Mod2_ZIP_6400$BUGSoutput$summary)
+GSS554_OccupancyModel_df <- as.data.frame(GSS554_OccupancyModel$BUGSoutput$summary)
 
 
 
 #Set up a dataframe with the MCMC summary information
-Area <- as.numeric(seals$area)
-Areas <- Mod2_ZIP_6400_df$mean[1:6440]
+floe_ar <- as.numeric(seals$floe_ar)
+floe_ars <- GSS554_OccupancyModel_df$mean[1:6440]
 
-Lambdas <- Mod2_ZIP_6400_df$mean[6446:12885] 
-Lambda_CI.1 <- as.numeric(Mod2_ZIP_6400_df[6446:12885, 3])
-Lambda_CI.2 <- as.numeric(Mod2_ZIP_6400_df[6446:12885, 7])
+Lambdas <- GSS554_OccupancyModel_df$mean[6446:12885] 
+Lambda_CI.1 <- as.numeric(GSS554_OccupancyModel_df[6446:12885, 3])
+Lambda_CI.2 <- as.numeric(GSS554_OccupancyModel_df[6446:12885, 7])
 
-Psi <- Mod2_ZIP_6400_df$mean[12886:19325]
-Psi_CI.1 <- as.numeric(Mod2_ZIP_6400_df[12886:19325, 3])
-Psi_CI.2 <- as.numeric(Mod2_ZIP_6400_df[12886:19325, 7])
+Psi <- GSS554_OccupancyModel_df$mean[12886:19325]
+Psi_CI.1 <- as.numeric(GSS554_OccupancyModel_df[12886:19325, 3])
+Psi_CI.2 <- as.numeric(GSS554_OccupancyModel_df[12886:19325, 7])
 
 real_count <- seals.subset$Count
-seals_area <- seals$area
-seals.stand.area <- (seals$area - mean(seals$area))/sd(seals$area)
+seals_floe_ar <- seals$floe_ar
+seals.stand.floe_ar <- (seals$floe_ar - mean(seals$floe_ar))/sd(seals$floe_ar)
 
 
 all.count.values <- as.numeric(real_count)
@@ -256,31 +256,31 @@ hist(as.numeric(Lambdas), freq=TRUE, add=TRUE, col="red", breaks = 10)
 
 
 #Set up a dataframe with the MCMC summary information
-Plot.Dat <- as.data.frame(cbind(Lambdas, Lambda_CI.1,  Lambda_CI.2, Psi, Psi_CI.1, Psi_CI.2, Areas, all.count.values))
+Plot.Dat <- as.data.frame(cbind(Lambdas, Lambda_CI.1,  Lambda_CI.2, Psi, Psi_CI.1, Psi_CI.2, floe_ars, all.count.values))
 
 
 
 
-#Display Occupancy against Area (standardized) 
-fig1<- ggplot(data = Plot.Dat, mapping = aes(x = Areas))+
+#Display Occupancy against floe_ar (standardized) 
+fig1<- ggplot(data = Plot.Dat, mapping = aes(x = floe_ars))+
   geom_line(aes(y= Psi, color = "Occupancy (Psi)"))+
   geom_ribbon(aes(ymin = Psi_CI.1, ymax = Psi_CI.2, color = "95% CI", fill = "Red"), alpha = 0.2)+
   theme_minimal()+
   xlim(-3, 3)+
   ylim(0, 1)+
-  labs(x = "Ice Floe Area", y = "Occupancy (Psi)", color = "Legend")
+  labs(x = "Ice Floe floe_ar", y = "Occupancy (Psi)", color = "Legend")
   theme(legend.background = element_rect(fill="gray90", size=.5, linetype="dotted"))
   # ggsave("Figure1.eps",fig1)
 
 
 #Display Count Against 
-fig2<- ggplot(data = Plot.Dat, mapping = aes(x = Areas))+
+fig2<- ggplot(data = Plot.Dat, mapping = aes(x = floe_ars))+
   geom_line(aes(y= Lambdas, color = "Counts"))+
   geom_ribbon(aes(ymin = Lambda_CI.1, ymax = Lambda_CI.2, color = "95% CI", fill = "Red"), alpha = 0.2)+
   theme_minimal()+
   xlim(-3, 3)+
   ylim(0, 2)+
-  labs(x = "Ice Floe Area", y = "Count (Lambda)", color = "Legend")
+  labs(x = "Ice Floe floe_ar", y = "Count (Lambda)", color = "Legend")
   theme(legend.background = element_rect(fill="gray90", size=.5, linetype="dotted"))
   # ggsave("Figure2.eps",fig2)
   
