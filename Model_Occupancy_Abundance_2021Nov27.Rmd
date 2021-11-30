@@ -182,7 +182,7 @@ ParsStage <- c("b0.occ", "b1.floe_ar.occ", "b2.dMIZ.occ","b3.dShlf.occ", "b4.sAr
 
 
 #Variables for MCMC
-ni <- 105500  # number of draws from the posterior
+ni <- 205500  # number of draws from the posterior
 nt <- 4    #thinning rate
 nb <- 5500  # number to discard for burn-in
 nc <- 3  # number of chains
@@ -203,6 +203,7 @@ GSS554_Occupancy_Abundance_Model = jags(
   n.burnin=nb,
   DIC=T)
 
+save(GSS554_Occupancy_Abundance_Model,  file = "GSS554_Occupancy_Abundance_Model.RData")
 ```
 
 
